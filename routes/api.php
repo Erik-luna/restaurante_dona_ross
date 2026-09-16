@@ -41,6 +41,9 @@ Route::get('/horarios', [PublicApiController::class, 'horarios'])->name('api.hor
 // =========================================================================
 // 3. AUTENTICACIÓN Y RECUPERACIÓN DE CONTRASEÑA
 // =========================================================================
+Route::post('/register', [AuthApiController::class, 'register'])->name('api.register');
+Route::post('/login', [AuthApiController::class, 'login'])->name('api.login');
+
 Route::prefix('auth')->name('api.auth.')->group(function () {
     Route::post('/register', [AuthApiController::class, 'register'])->name('register');
     Route::post('/login-cliente', [AuthApiController::class, 'loginCliente'])->name('login.cliente');
@@ -50,17 +53,22 @@ Route::prefix('auth')->name('api.auth.')->group(function () {
     Route::post('/recuperar-password/codigo', [AuthApiController::class, 'solicitarCodigoRecuperacion'])->name('password.codigo');
     Route::post('/recuperar-password/cambiar', [AuthApiController::class, 'cambiarPasswordRecuperacion'])->name('password.cambiar');
 
-    // Rutas que requieren token Sanctum
-    Route::middleware('auth:sanctum')->group(function () {
+    // Rutas que requieren token JWT
+    Route::middleware('auth:api')->group(function () {
         Route::get('/me', [AuthApiController::class, 'me'])->name('me');
         Route::post('/logout', [AuthApiController::class, 'logout'])->name('logout');
     });
 });
 
+Route::middleware('auth:api')->group(function () {
+    Route::get('/profile', [AuthApiController::class, 'profile'])->name('api.profile');
+    Route::post('/logout', [AuthApiController::class, 'logout'])->name('api.logout');
+});
+
 // =========================================================================
 // 4. RUTAS DE CLIENTE (Requiere Auth Sanctum + Rol 'cliente')
 // =========================================================================
-Route::middleware(['auth:sanctum', 'role:cliente'])->prefix('cliente')->name('api.cliente.')->group(function () {
+Route::middleware(['auth:api', 'role:cliente'])->prefix('cliente')->name('api.cliente.')->group(function () {
     Route::get('/dashboard', [ClienteApiController::class, 'dashboard'])->name('dashboard');
     Route::get('/perfil', [ClienteApiController::class, 'perfil'])->name('perfil');
     Route::put('/perfil', [ClienteApiController::class, 'updatePerfil'])->name('perfil.update');
@@ -76,7 +84,7 @@ Route::middleware(['auth:sanctum', 'role:cliente'])->prefix('cliente')->name('ap
 // =========================================================================
 // 5. RUTAS DE PERSONAL (Requiere Auth Sanctum + Roles 'personal' o 'admin')
 // =========================================================================
-Route::middleware(['auth:sanctum', 'role:personal,admin'])->prefix('personal')->name('api.personal.')->group(function () {
+Route::middleware(['auth:api', 'role:personal,admin'])->prefix('personal')->name('api.personal.')->group(function () {
     Route::get('/dashboard', [PersonalApiController::class, 'dashboard'])->name('dashboard');
 
     // Gestión de clientes por mostrador
@@ -96,7 +104,7 @@ Route::middleware(['auth:sanctum', 'role:personal,admin'])->prefix('personal')->
 // =========================================================================
 // 6. RUTAS DE ADMINISTRADOR (Requiere Auth Sanctum + Rol 'admin')
 // =========================================================================
-Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->name('api.admin.')->group(function () {
+Route::middleware(['auth:api', 'role:admin'])->prefix('admin')->name('api.admin.')->group(function () {
     Route::get('/dashboard', [AdminApiController::class, 'dashboard'])->name('dashboard');
     Route::get('/horarios', [PublicApiController::class, 'horarios'])->name('horarios');
 

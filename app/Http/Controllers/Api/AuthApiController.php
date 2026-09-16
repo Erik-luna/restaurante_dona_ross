@@ -8,7 +8,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class AuthApiController extends Controller
 {
@@ -42,17 +41,14 @@ class AuthApiController extends Controller
             'activo' => true,
         ]);
 
-        $token = $user->createToken('flutter-cliente-token')->plainTextToken;
+        $token = auth('api')->login($user);
 
-        return response()->json([
-            'success' => true,
-            'message' => '¡Registro exitoso! Bienvenido a Doña Ross.',
-            'data' => [
-                'token' => $token,
-                'token_type' => 'Bearer',
-                'user' => $user,
-            ],
-        ], 201);
+        return $this->tokenResponse($token, $user, '¡Registro exitoso! Bienvenido a Doña Ross.', 201);
+    }
+
+    public function login(Request $request): JsonResponse
+    {
+        return $this->authenticate($request);
     }
 
     /**
@@ -65,40 +61,7 @@ class AuthApiController extends Controller
             'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $credentials['email'])->first();
-
-        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Credenciales incorrectas.',
-            ], 401);
-        }
-
-        if ($user->role !== 'cliente') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Acceso denegado. Este formulario es solo para clientes.',
-            ], 403);
-        }
-
-        if (! $user->activo) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tu cuenta está desactivada. Contacta al administrador.',
-            ], 403);
-        }
-
-        $token = $user->createToken('flutter-cliente-token')->plainTextToken;
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Inicio de sesión exitoso.',
-            'data' => [
-                'token' => $token,
-                'token_type' => 'Bearer',
-                'user' => $user,
-            ],
-        ]);
+        return $this->authenticate($request, 'cliente');
     }
 
     /**
@@ -111,40 +74,7 @@ class AuthApiController extends Controller
             'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $credentials['email'])->first();
-
-        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Credenciales incorrectas.',
-            ], 401);
-        }
-
-        if (! in_array($user->role, ['admin', 'personal'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Acceso denegado. Solo personal autorizado.',
-            ], 403);
-        }
-
-        if (! $user->activo) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tu cuenta está desactivada.',
-            ], 403);
-        }
-
-        $token = $user->createToken('flutter-staff-token')->plainTextToken;
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Inicio de sesión exitoso como '.strtoupper($user->role).'.',
-            'data' => [
-                'token' => $token,
-                'token_type' => 'Bearer',
-                'user' => $user,
-            ],
-        ]);
+        return $this->authenticate($request, ['admin', 'personal']);
     }
 
     /**
@@ -154,8 +84,13 @@ class AuthApiController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => $request->user(),
+            'data' => auth('api')->user(),
         ]);
+    }
+
+    public function profile(): JsonResponse
+    {
+        return $this->me(request());
     }
 
     /**
@@ -163,16 +98,53 @@ class AuthApiController extends Controller
      */
     public function logout(Request $request): JsonResponse
     {
-        $user = $request->user();
-
-        if ($user && $user->currentAccessToken()) {
-            $user->currentAccessToken()->delete();
-        }
+        auth('api')->logout();
 
         return response()->json([
             'success' => true,
             'message' => 'Sesión cerrada correctamente.',
         ]);
+    }
+
+    private function authenticate(Request $request, string|array|null $requiredRole = null): JsonResponse
+    {
+        $credentials = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required|string',
+        ]);
+
+        $user = User::where('email', $credentials['email'])->first();
+
+        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+            return response()->json(['success' => false, 'message' => 'Credenciales incorrectas.'], 401);
+        }
+
+        if ($requiredRole !== null && ! in_array($user->role, (array) $requiredRole, true)) {
+            return response()->json(['success' => false, 'message' => 'Acceso denegado.'], 403);
+        }
+
+        if (! $user->activo) {
+            return response()->json(['success' => false, 'message' => 'Tu cuenta está desactivada.'], 403);
+        }
+
+        $token = auth('api')->login($user);
+
+        return $this->tokenResponse($token, $user, 'Inicio de sesión exitoso.');
+    }
+
+    private function tokenResponse(string $token, User $user, string $message, int $status = 200): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data' => [
+                'access_token' => $token,
+                'token' => $token,
+                'token_type' => 'Bearer',
+                'expires_in' => auth('api')->factory()->getTTL() * 60,
+                'user' => $user,
+            ],
+        ], $status);
     }
 
     /**
